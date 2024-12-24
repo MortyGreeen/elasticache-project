@@ -1,0 +1,58 @@
+name: Deploy Redis Backend to EC2
+
+on:
+  push:
+    branches:
+      - main  # Запуск при пуше в ветку main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Checkout репозитория
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Шаг 2: Создание файла с SSH-ключом
+      - name: Create SSH key file
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > EC2Tutorial.pem
+          chmod 600 EC2Tutorial.pem
+
+      # Шаг 3: Аутентификация в AWS ECR
+      - name: Authenticate to Amazon ECR
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set default.region eu-central-1
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
+
+      # Шаг 4: Сборка и отправка образа в ECR
+      - name: Build and Push Docker Image to ECR
+        env:
+          AWS_REGION: eu-central-1
+          ECR_REPOSITORY: redis-backend
+        run: |
+          docker build -t $ECR_REPOSITORY:latest ./backend_redis
+          docker tag $ECR_REPOSITORY:latest 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:latest
+          docker push 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:latest
+
+      # Шаг 5: Деплой на EC2
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
+          echo "Connecting to EC2 instance..."
+          cd /home/ec2-user/book-sales-platform || exit 1
+          
+          echo "Stopping existing Redis container..."
+          docker-compose down || exit 1
+          
+          echo "Pulling latest Redis image from ECR..."
+          docker-compose pull backend_redis || exit 1
+          
+          echo "Starting Redis container..."
+          docker-compose up -d backend_redis || exit 1
+          
+          echo "Redis deployment completed successfully!"
+          EOF
