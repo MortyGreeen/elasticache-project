@@ -53,6 +53,7 @@ services:
 volumes:
   pgdata:
 
+<<<<<<< HEAD
 
 
 
@@ -77,3 +78,5 @@ volumes:
 
 
 
+=======
+>>>>>>> d7e0eb34fc720c5c741f64132a8d0a914f77e995
