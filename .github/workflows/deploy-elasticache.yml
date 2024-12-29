@@ -14,13 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Шаг 2: Создание файла с SSH-ключом
-      - name: Create SSH key file
-        run: |
-          echo "${{ secrets.EC2_SSH_KEY }}" > EC2Tutorial.pem
-          chmod 600 EC2Tutorial.pem
-
-      # Шаг 3: Логин в ECR
+      # Шаг 2: Логин в ECR
       - name: Authenticate with ECR
         run: |
           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -28,23 +22,26 @@ jobs:
           aws configure set default.region eu-central-1
           aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
 
-      # Шаг 4: Сборка Docker-образа
+      # Шаг 3: Сборка Docker-образа
       - name: Build Docker image
         run: |
           docker build -t backend-redis:${{ github.run_number }} ./backend_redis
           docker tag backend-redis:${{ github.run_number }} 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:${{ github.run_number }}
 
-      # Шаг 5: Пуш Docker-образа в ECR
+      # Шаг 4: Пуш Docker-образа в ECR
       - name: Push Docker image to ECR
         run: |
           docker push 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:${{ github.run_number }}
 
-      # Шаг 6: Деплой на EC2
+      # Шаг 5: Авторизация в ECR на EC2 перед деплоем
       - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
           echo "Connecting to EC2 instance..."
           cd /home/ec2-user/book-sales-platform || exit 1
+          
+          echo "Authenticating to ECR..."
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
           
           echo "Updating docker-compose.yml with new image tag..."
           sed -i "s/backend-redis:.*/backend-redis:${{ github.run_number }}/" docker-compose.yml
@@ -59,6 +56,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # Шаг 7: Очистка локального Docker
+      # Шаг 6: Очистка локального Docker
       - name: Cleanup Docker
         run: docker system prune -f
