@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    image: 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:latest
+    image: 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${TAG:-latest}
     container_name: backend
     restart: always
     environment:
@@ -22,7 +22,7 @@ services:
       - backend_redis
 
   backend_redis:
-    image: 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:latest
+    image: 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:${TAG:-latest}
     container_name: backend_redis
     restart: always
     environment:
