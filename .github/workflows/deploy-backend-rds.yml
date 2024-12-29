@@ -35,15 +35,15 @@ jobs:
         run: |
           aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
 
-      # Шаг 5: Сборка и отправка образа в ECR
+      # Шаг 5: Сборка и отправка образа в ECR с динамическими тегами
       - name: Build and Push Docker Image to ECR
         env:
           AWS_REGION: eu-central-1
           ECR_REPOSITORY: rds-backend
         run: |
-          docker build -t $ECR_REPOSITORY:latest ./backend_rds
-          docker tag $ECR_REPOSITORY:latest 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:latest
-          docker push 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:latest
+          docker build -t $ECR_REPOSITORY:${{ github.run_number }} ./backend_rds
+          docker tag $ECR_REPOSITORY:${{ github.run_number }} 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}
+          docker push 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}
 
       # Шаг 6: Деплой на EC2
       - name: Deploy to EC2
@@ -52,9 +52,11 @@ jobs:
           echo "Connecting to EC2 instance..."
           cd /home/ec2-user/book-sales-platform || exit 1
 
-          echo "Pulling latest images from ECR..."
+          echo "Updating docker-compose.yml with new image tag..."
+          sed -i "s|rds-backend:.*|rds-backend:${{ github.run_number }}|" docker-compose.yml
+
+          echo "Restarting backend service..."
           docker-compose down || exit 1
-          docker-compose pull backend || exit 1
           docker-compose up -d backend || exit 1
 
           echo "Backend deployment completed successfully!"
