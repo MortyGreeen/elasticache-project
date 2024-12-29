@@ -10,54 +10,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Checkout репозитория
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Шаг 2: Создаём файл с SSH-ключом
       - name: Create SSH key file
         run: |
           echo "${{ secrets.EC2_SSH_KEY }}" > EC2Tutorial.pem
           chmod 600 EC2Tutorial.pem
 
-      # Шаг 3: Авторизация в AWS CLI
-      - name: Configure AWS CLI
+      - name: Authenticate with ECR
         run: |
           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set default.region eu-central-1
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
+
+      - name: Build and Push Docker Image to ECR
+        run: |
+          docker build -t rds-backend:${{ github.run_number }} ./backend_rds
+          docker tag rds-backend:${{ github.run_number }} 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.run_number }}
+          docker push 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.run_number }}
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
+          cd /home/ec2-user/book-sales-platform || exit 1
+          docker-compose down backend || exit 1
+          sed -i "s|rds-backend:.*|rds-backend:${{ github.run_number }}|" docker-compose.yml
+          docker-compose up -d backend || exit 1
+          EOF
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # Шаг 4: Аутентификация в ECR
-      - name: Authenticate to Amazon ECR
-        run: |
-          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
-
-      # Шаг 5: Сборка и отправка образа в ECR с динамическими тегами
-      - name: Build and Push Docker Image to ECR
-        env:
-          AWS_REGION: eu-central-1
-          ECR_REPOSITORY: rds-backend
-        run: |
-          docker build -t $ECR_REPOSITORY:${{ github.run_number }} ./backend_rds
-          docker tag $ECR_REPOSITORY:${{ github.run_number }} 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}
-          docker push 183631324733.dkr.ecr.${AWS_REGION}.amazonaws.com/$ECR_REPOSITORY:${{ github.run_number }}
-
-      # Шаг 6: Деплой на EC2
-      - name: Deploy to EC2
-        run: |
-          ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
-          echo "Connecting to EC2 instance..."
-          cd /home/ec2-user/book-sales-platform || exit 1
-
-          echo "Updating docker-compose.yml with new image tag..."
-          sed -i "s|rds-backend:.*|rds-backend:${{ github.run_number }}|" docker-compose.yml
-
-          echo "Restarting backend service..."
-          docker-compose down || exit 1
-          docker-compose up -d backend || exit 1
-
-          echo "Backend deployment completed successfully!"
-          EOF
+      - name: Cleanup Docker
+        run: docker image prune -f
