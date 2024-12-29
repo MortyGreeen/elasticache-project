@@ -1,0 +1,58 @@
+name: Deploy ElastiCache Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Клонирование репозитория
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Шаг 2: Логин в ECR
+      - name: Authenticate with ECR
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set default.region eu-central-1
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
+
+      # Шаг 3: Сборка Docker-образа
+      - name: Build Docker image
+        run: |
+          docker build -t backend-redis:${{ github.run_number }} ./backend_redis
+          docker tag backend-redis:${{ github.run_number }} 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:${{ github.run_number }}
+
+      # Шаг 4: Пуш Docker-образа в ECR
+      - name: Push Docker image to ECR
+        run: |
+          docker push 183631324733.dkr.ecr.eu-central-1.amazonaws.com/backend-redis:${{ github.run_number }}
+
+      # Шаг 5: Деплой на EC2
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
+          echo "Connecting to EC2 instance..."
+          cd /home/ec2-user/book-sales-platform || exit 1
+          
+          echo "Updating docker-compose.yml with new image tag..."
+          sed -i "s/backend-redis:.*/backend-redis:${{ github.run_number }}/" docker-compose.yml
+          
+          echo "Restarting containers..."
+          docker-compose down || exit 1
+          docker-compose up -d || exit 1
+
+          echo "Deployment completed successfully!"
+          EOF
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      # Шаг 6: Очистка локального Docker
+      - name: Cleanup Docker
+        run: docker system prune -f
