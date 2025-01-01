@@ -27,21 +27,31 @@ jobs:
 
       - name: Build and Push Docker Image to ECR
         run: |
-          docker build -t rds-backend:${{ github.run_number }} ./backend_rds
-          docker tag rds-backend:${{ github.run_number }} 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.run_number }}
-          docker push 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.run_number }}
+          echo "Building Docker image for RDS backend..."
+          docker build -t rds-backend:${{ github.sha }} ./backend_rds
+          docker tag rds-backend:${{ github.sha }} 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.sha }}
+          docker push 183631324733.dkr.ecr.eu-central-1.amazonaws.com/rds-backend:${{ github.sha }}
 
       - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
+          echo "Connecting to EC2 instance..."
           cd /home/ec2-user/book-sales-platform || exit 1
+          
+          echo "Updating docker-compose.yml with new image tag..."
+          sed -i "s|rds-backend:.*|rds-backend:${{ github.sha }}|" docker-compose.yml
+          
+          echo "Restarting backend service..."
           docker-compose down backend || exit 1
-          sed -i "s|rds-backend:.*|rds-backend:${{ github.run_number }}|" docker-compose.yml
           docker-compose up -d backend || exit 1
+
+          echo "Deployment completed successfully!"
           EOF
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Cleanup Docker
-        run: docker image prune -f
+        run: |
+          echo "Cleaning up local Docker resources..."
+          docker image prune -f
