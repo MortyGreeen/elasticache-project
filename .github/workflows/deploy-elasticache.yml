@@ -20,6 +20,7 @@ jobs:
 
       - name: Authenticate with ECR
         run: |
+          echo "Authenticating to ECR..."
           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set default.region eu-central-1
@@ -37,6 +38,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i EC2Tutorial.pem ec2-user@18.193.161.41 << 'EOF'
           echo "Connecting to EC2 instance..."
           cd /home/ec2-user/book-sales-platform || exit 1
+
+          echo "Authenticating to ECR..."
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 183631324733.dkr.ecr.eu-central-1.amazonaws.com
 
           echo "Updating docker-compose.yml with new image tag..."
           sed -i "s|backend-redis:.*|backend-redis:${{ github.sha }}|" docker-compose.yml
